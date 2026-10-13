@@ -136,6 +136,7 @@ a{color:var(--accent)}
 <div class="overlay hidden" id="customOv"></div>
 <div class="overlay hidden" id="nameOv"></div>
 <div class="overlay hidden" id="bwOv"></div>
+<div class="overlay hidden" id="restPickOv"></div>
 
 <script>
 "use strict";
@@ -339,7 +340,7 @@ function seedHistory(){
 }
 function defaultState(){
   return {
-    unit:'kg', defaultRest:90, view:'home', sample:true,
+    unit:'kg', defaultRest:90, restByEx:{}, view:'home', sample:true,
     custom:[],
     templates:[
       {id:uid(),name:'Push Day',ex:['bb-bench','inc-db-press','machine-press','db-lateral','cable-lateral','tri-pushdown']},
@@ -359,6 +360,7 @@ function todayDateStr(){const d=new Date();const o=d.getTimezoneOffset();return 
 S=load()||defaultState();
 S.bodyweight=S.bodyweight||[];
 S.custom=S.custom||[];
+S.restByEx=S.restByEx||{};
 
 /* ---------- helpers ---------- */
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
@@ -374,6 +376,7 @@ function fmtTime(sec){sec=Math.max(0,Math.round(sec));const m=Math.floor(sec/60)
 function fmtDate(iso){const d=new Date(iso);return d.toLocaleDateString(undefined,{month:'short',day:'numeric'});}
 function lastEntryFor(exId){for(let i=S.history.length-1;i>=0;i--){const it=S.history[i].items.find(x=>x.exId===exId);if(it)return {date:S.history[i].date,sets:it.sets};}return null;}
 function setsSummary(sets){return sets.map(s=>fmtW(s.kg)+'×'+s.reps).join(', ');}
+function restForEx(exId){return (S.restByEx&&S.restByEx[exId])||S.defaultRest;}
 function toast(msg){let t=document.getElementById('toast');if(t)t.remove();t=document.createElement('div');t.className='toast';t.id='toast';t.textContent=msg;document.getElementById('app').appendChild(t);setTimeout(()=>{if(t)t.remove();},1800);}
 
 /* ---------- UI state (not persisted) ---------- */
@@ -466,11 +469,11 @@ function renderLibrary(){
   h+='<div class="filtrow">'+BODY_PARTS.map(b=>'<span class="chip '+(libFilter.body===b?'on':'')+'" data-act="lib-body" data-v="'+b+'">'+b+'</span>').join('')+'</div>';
   h+='<div class="filtrow" style="padding-top:8px">'+EQUIP.map(eq=>'<span class="chip '+(libFilter.equip===eq?'on':'')+'" data-act="lib-equip" data-v="'+eq+'" style="font-size:12px;padding:5px 11px">'+eq+'</span>').join('')+'</div>';
 
-  const q=libFilter.q.trim().toLowerCase();
+  const qn=libFilter.q.trim().toLowerCase().replace(/[^a-z0-9]/g,'');
   let list=allEx().filter(e=>{
     if(libFilter.body!=='All'&&e.body!==libFilter.body)return false;
     if(libFilter.equip&&e.equip!==libFilter.equip)return false;
-    if(q&&!(e.name.toLowerCase().includes(q)||e.body.toLowerCase().includes(q)||e.equip.toLowerCase().includes(q)))return false;
+    if(qn){const hay=(e.name+' '+e.body+' '+e.equip).toLowerCase().replace(/[^a-z0-9]/g,'');if(!hay.includes(qn))return false;}
     return true;
   });
   h+='<div class="pad" style="padding-top:12px;padding-bottom:110px">';
@@ -506,7 +509,9 @@ function renderSession(){
     h+='<div class="card" style="padding:14px 14px 6px;margin-bottom:14px">'+
       '<div class="row" style="margin-bottom:10px"><span class="faint" aria-hidden="true">'+gripSvg()+'</span>'+
       '<div style="flex:1;min-width:0"><div style="font-weight:700;font-size:16px;font-family:var(--display)">'+esc(e.name)+'</div>'+
-      '<div class="mut" style="font-size:11.5px">'+esc(e.body)+' · '+esc(e.equip)+(e.uni?' · unilateral':'')+'</div></div>'+
+      '<div class="mut" style="font-size:11.5px">'+esc(e.body)+' · '+esc(e.equip)+(e.uni?' · unilateral':'')+'</div>'+
+      '<button data-act="ex-rest" data-i="'+ii+'" style="margin-top:7px;background:var(--surface2);border:1px solid var(--line);color:var(--accent);font-size:11.5px;font-weight:700;padding:4px 9px;border-radius:8px;display:inline-flex;align-items:center;gap:5px;cursor:pointer" aria-label="Set rest time for this exercise">'+svg('clock',13,2)+fmtTime(restForEx(it.exId))+' rest</button>'+
+      '</div>'+
       '<span class="tag" style="background:rgba(214,251,90,.14);color:var(--accent)">'+doneCount+' / '+it.sets.length+'</span>'+
       '<div style="display:flex;gap:3px;margin-left:6px">'+
         '<button class="icon-btn" data-act="sess-up" data-i="'+ii+'" style="width:30px;height:30px;border-radius:8px" aria-label="Move up">'+svg('up',14,2.4)+'</button>'+
@@ -640,6 +645,7 @@ function renderSettings(){
     '<button class="opt '+(S.unit==='lb'?'on':'')+'" data-act="unit" data-v="lb">Pounds</button></div>';
   h+='<div class="sec">DEFAULT REST</div><div class="seg">'+
     [60,90,120,180].map(s=>'<button class="opt '+(S.defaultRest===s?'on':'')+'" data-act="rest" data-v="'+s+'">'+fmtTime(s)+'</button>').join('')+'</div>';
+  h+='<div class="mut" style="font-size:12px;margin:8px 2px 0;line-height:1.5">Used when an exercise has no rest of its own. Set a per-exercise rest by tapping the clock chip on the exercise card during a workout.</div>';
   h+='<div class="card" style="padding:16px;margin-top:22px"><div style="font-weight:700;font-size:15px;margin-bottom:4px">About your data</div>'+
     '<div class="mut" style="font-size:13px;line-height:1.5">Everything you log is saved privately on this device, in this browser. It never leaves your phone. '+(S.sample?'The app started with a few <b style="color:var(--fg)">sample sessions</b> so progress has something to show — clear them below once you log your own.':'')+'</div></div>';
   h+='<div class="sec">STATS</div><div class="row" style="gap:10px"><div class="card" style="flex:1;padding:13px 14px"><div class="mut" style="font-size:11px;font-weight:800">WORKOUTS</div><div class="num" style="font-size:22px;font-weight:700">'+S.history.length+'</div></div>'+
@@ -847,6 +853,35 @@ function refreshBW(){
   const ov=document.getElementById('bwOv');ov.innerHTML=bwHTML();
 }
 
+/* ---------- PER-EXERCISE REST ---------- */
+let restPick={exId:null,sec:90,typed:''};
+function openRestPick(exId){const cur=restForEx(exId);restPick={exId:exId,sec:cur,typed:''};renderRestPick();document.getElementById('restPickOv').classList.remove('hidden');}
+function closeRestPick(){document.getElementById('restPickOv').classList.add('hidden');}
+function rpTypedSec(){const t=restPick.typed.padStart(4,'0').slice(-4);return parseInt(t.slice(0,2),10)*60+parseInt(t.slice(2),10);}
+function rpTypedFmt(){const t=restPick.typed.padStart(4,'0').slice(-4);return t.slice(0,2)+':'+t.slice(2);}
+function renderRestPick(){
+  const e=exById(restPick.exId)||{name:'Exercise'};
+  const presets=[30,45,60,90,120,150,180,240,300];
+  const disp=restPick.typed?rpTypedFmt():fmtTime(restPick.sec);
+  let h='<div class="ov-head"><button data-act="rp-close" style="background:none;border:none;color:var(--muted);font-weight:600;font-size:15px;cursor:pointer">Cancel</button>'+
+    '<div style="font-family:var(--display);font-weight:700;font-size:17px">Rest time</div><span style="width:52px"></span></div>'+
+    '<div class="ov-body">'+
+    '<div class="mut" style="font-size:13px;line-height:1.5;margin:4px 2px 2px">For <b style="color:var(--fg)">'+esc(e.name)+'</b> — used automatically when you finish a set of it.</div>'+
+    '<div class="sec">PRESETS</div><div style="display:flex;flex-wrap:wrap;gap:8px">'+
+    presets.map(p=>'<button class="chip '+(!restPick.typed&&restPick.sec===p?'on':'')+'" data-act="rp-preset" data-v="'+p+'">'+fmtTime(p)+'</button>').join('')+'</div>'+
+    '<div class="card" style="padding:14px 16px 16px;margin-top:18px">'+
+      '<div class="spread" style="margin-bottom:12px"><span class="sec" style="margin:0">TYPE A TIME</span><span class="num" style="font-size:22px;font-weight:700;letter-spacing:.04em">'+disp+'</span></div>'+
+      '<div class="keypad">'+
+        [1,2,3,4,5,6,7,8,9].map(n=>'<button class="key" data-act="rp-key" data-v="'+n+'">'+n+'</button>').join('')+
+        '<button class="key minor" data-act="rp-key" data-v="00">00</button>'+
+        '<button class="key" data-act="rp-key" data-v="0">0</button>'+
+        '<button class="key minor" data-act="rp-del" aria-label="Delete">⌫</button>'+
+      '</div></div>'+
+    '<button class="btn btn-accent" data-act="rp-save" style="margin-top:18px">Save rest time</button>'+
+    '</div>';
+  document.getElementById('restPickOv').innerHTML=h;
+}
+
 /* ---------- event handling ---------- */
 function closestAct(el){while(el&&el!==document){if(el.dataset&&el.dataset.act)return el;el=el.parentNode;}return null;}
 
@@ -891,7 +926,8 @@ document.addEventListener('click',function(ev){
     case 'sess-save-template': {const a=S.active;askName('Save as workout',a.name,(name)=>{if(name){S.templates.push({id:uid(),name,ex:a.items.map(x=>x.exId)});save();render();toast('Workout saved');}});return;}
     case 'set-add': {const it=S.active.items[i];const last=it.sets[it.sets.length-1]||blankSet();it.sets.push({kg:last.kg,reps:last.reps,done:false});save();render();return;}
     case 'set-del': {const it=S.active.items[i];if(it.sets.length>1)it.sets.pop();save();render();return;}
-    case 'set-done': {const s=S.active.items[i].sets[si];s.done=!s.done;save();render();if(s.done){startRest(S.defaultRest);}return;}
+    case 'set-done': {const s=S.active.items[i].sets[si];s.done=!s.done;save();render();if(s.done){startRest(restForEx(S.active.items[i].exId));}return;}
+    case 'ex-rest': openRestPick(S.active.items[i].exId); return;
     case 'open-timer': openTimer(); return;
     // timer
     case 'timer-close': closeTimer(); return;
@@ -902,6 +938,11 @@ document.addEventListener('click',function(ev){
     case 'timer-key': timer.typed=(timer.typed+v).slice(-4);updateTimerUI();return;
     case 'timer-del': timer.typed=timer.typed.slice(0,-1);updateTimerUI();return;
     case 'timer-use': {const sec=typedSeconds();if(sec>0){startRest(sec);timer.typed='';updateTimerUI();}return;}
+    case 'rp-close': closeRestPick(); return;
+    case 'rp-preset': restPick.sec=parseInt(v,10);restPick.typed='';renderRestPick();return;
+    case 'rp-key': restPick.typed=(restPick.typed+v).slice(-4);renderRestPick();return;
+    case 'rp-del': restPick.typed=restPick.typed.slice(0,-1);renderRestPick();return;
+    case 'rp-save': {const sec=restPick.typed?rpTypedSec():restPick.sec;if(sec>0){S.restByEx=S.restByEx||{};S.restByEx[restPick.exId]=sec;save();}closeRestPick();render();toast('Rest set to '+fmtTime(sec)+' for this exercise');return;}
     case 'rest-toggle': stopAlarm();timer.done=false;timer.running=!timer.running;if(timer.running){if(timer.remaining<=0)timer.remaining=timer.total;requestNotify();requestWake();timerStartTick();armBackgroundAlarm();}else{clearInterval(timer.iv);releaseWake();disarmBackgroundAlarm();}renderRestBar();return;
     case 'rest-open': openTimer(); return;
     case 'rest-dismiss': stopAlarm();timer.visible=false;timer.running=false;timer.done=false;clearInterval(timer.iv);releaseWake();disarmBackgroundAlarm();renderRestBar();return;
